@@ -12,6 +12,10 @@ A development showcase by [Monsdevo](https://github.com/Monsdevo).
 
 </div>
 
+![Opening waterfront scene running in the iOS port](media/ios-opening-pier.png)
+
+<p align="center"><em>Captured from the iPhone build — the opening waterfront scene rendered on device.</em></p>
+
 ---
 
 ## The project
@@ -36,6 +40,21 @@ Confirmed so far:
 - Separate reference and experimental runtime paths for checking correctness and comparing performance.
 
 This remains an **early development prototype**. Reaching the first playable scene does not mean the full campaign, every controller action, or long sessions have been validated. Touch controls are planned; they are not implemented yet.
+
+## Screenshots
+
+These captures show the current experimental iPhone build. Click an image to view it at full resolution.
+
+<table>
+  <tr>
+    <td width="50%"><a href="media/ios-opening-encounter.png"><img src="media/ios-opening-encounter.png" alt="Cole during the opening encounter, rendered by the iPhone build" width="100%"></a></td>
+    <td width="50%"><a href="media/ios-cinematic-effects.png"><img src="media/ios-cinematic-effects.png" alt="Lightning and cinematic effects in the iPhone build" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td align="center">Opening encounter</td>
+    <td align="center">Cinematic effects</td>
+  </tr>
+</table>
 
 ## Work completed
 
@@ -71,6 +90,10 @@ The current focus is the serial renderer path: redundant RSX state processing, v
 Recent stationary early-gameplay tests on iPhone 15 Pro were around **6 FPS** under controlled thermal conditions. Lighter scenes can run faster, but gameplay performance is still well below a comfortable target.
 
 Performance varies with scene, temperature, and runtime settings. There is no sustained 30 FPS claim, broad device-support claim, or public release date at this point.
+
+![Gameplay on iPhone with the performance overlay visible](media/ios-gameplay-performance-hud.png)
+
+*Gameplay with the on-device performance overlay. HUD readings are snapshots of a particular scene and thermal condition, not an A/B benchmark or a sustained-performance claim.*
 
 ## What's next
 
