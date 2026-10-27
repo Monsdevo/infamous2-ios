@@ -85,12 +85,4 @@ Performance varies with scene, temperature, and runtime settings. There is no su
 
 This repository will document milestones and development progress. Questions and feedback are welcome through [Issues](https://github.com/Monsdevo/infamous2-ios/issues).
 
-## Credits
-
-This work builds on the efforts of the projects below:
-
-- [erikomis/infamous2-recomp](https://github.com/erikomis/infamous2-recomp) — the existing inFAMOUS 2 recompilation/macOS port.
-- [NoahBPeterson/ps3recomp](https://github.com/NoahBPeterson/ps3recomp) — the runtime fork used by that port.
-- [sp00nznet/ps3recomp](https://github.com/sp00nznet/ps3recomp) — the underlying PS3 static-recompilation infrastructure.
-
 inFAMOUS 2 is a Sucker Punch Productions / Sony Computer Entertainment title. This is an unofficial project and is not affiliated with or endorsed by its creators.
