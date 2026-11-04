@@ -28,6 +28,8 @@ The game runs **on the iPhone itself**. A Mac is used for development and instal
 
 ## Current status
 
+**Updated November 5, 2026 · Latest device build: 56**
+
 The project has moved beyond an empty Metal view: **the actual game boots and reaches controllable gameplay on a real iPhone 15 Pro.**
 
 Confirmed so far:
@@ -36,14 +38,15 @@ Confirmed so far:
 - Metal rendering of the game menus, opening sequences, cinematics, and the first playable scene.
 - Game data stored and used locally on the phone.
 - Audio output and physical controller input, including DualSense testing.
-- An in-game settings panel with selectable performance indicators, thermal and memory information, and CSV logging.
+- An English-language in-game settings panel with selectable performance indicators, thermal and memory information, and CSV logging.
 - Separate reference and experimental runtime paths for checking correctness and comparing performance.
+- On-device testing in the opening waterfront area and a saved swamp scene.
 
 This remains an **early development prototype**. Reaching the first playable scene does not mean the full campaign, every controller action, or long sessions have been validated. Touch controls are planned; they are not implemented yet.
 
 ## Screenshots
 
-These captures show the current experimental iPhone build. Click an image to view it at full resolution.
+These captures show earlier development builds running on iPhone. They document rendering progress rather than the latest performance figures. Click an image to view it at full resolution.
 
 <table>
   <tr>
@@ -64,45 +67,77 @@ The existing macOS recompilation project provided the starting point. Work since
 
 Memory mapping and host-thread stack handling have also been adapted during crash diagnosis. These changes helped the project progress from boot experiments to real on-device gameplay.
 
-### Metal lighting and SSAO
+### Optimizations with measured gains
 
-Lighting and screen-space ambient occlusion (SSAO) were identified as producers of results that the rendering path was waiting for. Their Metal paths were integrated and tested on the phone.
+Lighting and screen-space ambient occlusion (SSAO) were identified as producers of results that the renderer was waiting for. Their compute paths were moved to Metal while retaining the original statically recompiled SPU paths for reference and fallback.
 
-In separate controlled comparisons of an early gameplay scene:
+| Change | Observed iPhone 15 Pro result | Scope |
+|---|---|---|
+| Metal lighting | **3.97 → 4.97 FPS**, approximately **25% higher FPS** | Early stationary-gameplay A/B pilot; roughly 50 ms less per frame |
+| Metal SSAO | **4.84 → 6.16 FPS**, approximately **27% higher FPS** and **44 ms saved per frame** | Separate pilot with Metal lighting already enabled |
+| Far-light rejection | Approximately **3.8–5.1% higher FPS**, **5.7–8.1 ms saved per frame** | Two controlled comparison sequences on a warmed phone |
+| Combined light-mask and runtime improvements | **6.30 → 6.99 FPS**, approximately **10.9% higher FPS** and **15.6 ms saved per frame** | Cooled opening-scene A/B/A; Metal lighting and SSAO enabled in both configurations |
 
-| Change | Observed result |
-|---|---|
-| Metal lighting | Approximately **25% higher FPS** than its SPU reference |
-| Metal SSAO | Approximately **27% higher FPS** than its SPU reference, with Metal lighting already enabled |
+The combined profile includes far-light rejection, conservative interval-based light-tile masks, and faster SPU dispatch / stack-reset checks. Its result measures the **package**, not the independent contribution of each component. Far-light rejection is already included in that package. These percentages and millisecond savings must not be added together.
 
-These are individual, short comparisons, not additive percentages or guarantees for the entire game. Broader visual-equivalence and stability testing is still needed.
+Lighting tile-mask alpha handling was also corrected. SSAO boundary cleanup prevents remaining reference depth work from reclaiming AO tiles already handled by Metal. That cleanup removed observed duplicate work, but its small FPS difference was not independently established as a repeatable gain.
 
-### Profiling and optimization experiments
+The working baseline uses O2-compiled SPU code, adapted guest-memory mapping and host-thread stacks, and the verified combined paths. Memory and stack changes helped resolve diagnosed allocation failures; they are stability work, not measured FPS gains. The O2 build also remains in use, without claiming a clean isolated O1/O2 speedup from the earlier crash-affected comparison.
 
-The project now records actual presentation timestamps, CPU samples, GPU command-buffer timings, and synchronization events. Optimization decisions are checked against frame time as well as local function costs.
+### What we tried without an accepted FPS gain
 
-ARM64 and Metal experiments have been developed for Edge geometry, skinning, and culling, with output checks against the original paths. Some local work became faster, but **a repeatable gameplay FPS improvement has not been demonstrated for those experiments**. Small GPU jobs can lose their benefit to submission and synchronization costs, so expensive candidates fall back to the CPU.
+Since the previous update, the RSX comparison has been completed and additional renderer, SPU, and DMA experiments have been tested. Several ideas reduced local work or passed correctness checks without improving the time between presented frames.
 
-The current focus is the serial renderer path: redundant RSX state processing, vertex preparation and copying, texture-change detection, and CPU/GPU scheduling. A first change to reduce redundant legacy RSX state updates has been implemented, checked locally, and installed on the phone. **Its on-device performance comparison is pending.**
+| Experiment | Tested on | Result |
+|---|---|---|
+| Edge geometry, skinning, and culling through ARM64 and Metal alternatives | iPhone | No repeatable gameplay FPS gain. Early fine-grained GPU versions were substantially slower; reworked versions added batching, sparse data transfer, and cost-based fallback, but still did not establish a gain. |
+| Skipping redundant legacy RSX state updates | iPhone | Reduced repeated state processing, but no meaningful end-to-end FPS improvement was demonstrated. This is not counted as a verified speedup. |
+| Vertex-decode and texture-hash caches | iPhone | High cache-hit rates did not produce a repeatable frame-time gain. Experimental caches remain disabled. |
+| Depth-only rendering variants and wider SPU arithmetic / register-localization experiments | Mac | No accepted repeatable gain after controls and measurement overhead were accounted for. Mac results are not presented as iPhone gains. |
+| Omitting the normal-buffer writeback to guest memory | Mac | A reference SPU fallback still needed the omitted input. The safety guard stopped the experiment; there is no valid optimized FPS result and it was not enabled on iPhone. |
+| Indirect SPU branch-address cache | Mac | High hit coverage, but no repeatable FPS improvement. Not promoted to the iPhone baseline. |
+| Skipping the DMA payload diagnostic scan | iPhone | No repeatable gain; the original scan remains enabled. DMA copies, fences, and coherence rules were preserved. |
+| Last-matching MFC slot hint | iPhone | The apparent approximately 1% aggregate difference was driven mainly by a later reference slowdown. No repeatable gain accepted. |
+| Overlay signature / page rejection filter | iPhone | Approximately **10.04 vs. 10.02 FPS** for reference vs. candidate; no meaningful gain. |
+| Inlining frequent MFC channel accesses | iPhone | Approximately **8.83 vs. 8.73 FPS**; no meaningful gain. |
+| Aligning MFC registry slots to 128 bytes | iPhone | Approximately **8.96 vs. 8.74 FPS**; no meaningful gain. The original slot layout was restored. |
+
+These outcomes describe the implementations and scenes tested. They do not prove that geometry, caching, or DMA can never be optimized. Small positive or negative differences are not treated as causal speedups or regressions when the reference itself drifts. Unproven geometry, cache, and DMA alternatives are kept out of the normal optimized profile.
+
+### How comparisons are checked
+
+Measurements use actual on-device presentation timestamps, with CPU sampling and synchronization traces collected separately. FPS windows exclude output validation, screenshots, active profilers, and new shader compilation. Tests check the selected path's actual execution, application state, thermal category, and rendering errors.
+
+Where practical, reference and candidate runs are bracketed by a return to the reference. Layout changes require fresh processes rather than live switching. Recent tests also use natural, uncooled operation instead of requiring external cooling. A fixed thermal category does not guarantee identical chip clocks, so reference drift is reported rather than hidden.
 
 ## Performance today
 
-Recent stationary early-gameplay tests on iPhone 15 Pro were around **6 FPS** under controlled thermal conditions. Lighter scenes can run faster, but gameplay performance is still well below a comfortable target.
+**The latest reference measurement is approximately 9 FPS in the saved swamp scene on iPhone 15 Pro. The opening waterfront benchmark is approximately 7 FPS.** There is no measured full-game average.
 
-Performance varies with scene, temperature, and runtime settings. There is no sustained 30 FPS claim, broad device-support claim, or public release date at this point.
+| Reference scene | Average FPS | Mean frame interval | Conditions |
+|---|---:|---:|---|
+| Opening waterfront, verified combined profile | **6.99** | **143.0 ms** | Stationary, externally cooled, nominal thermal category; October 31 |
+| Saved swamp / wooden walkway, latest reference | **8.96** | **111.6 ms** | Stationary, naturally warmed phone, serious thermal category; November 4 |
+
+The latest swamp result combines the frame counts and elapsed presentation time of two reference windows bracketing the alignment experiment. Those windows individually measured **9.28 and 8.64 FPS**. Other recent swamp reference runs were around **8.8–10.0 FPS**, illustrating variation between runs even in the same thermal category.
+
+**The difference between the waterfront and swamp numbers is a difference in scene and test conditions, not evidence of a 7 → 9 FPS optimization gain.** Lighter menus and opening sequences can run faster. Gameplay remains below the desired performance level, and sustained 30 FPS has not been achieved.
 
 ![Gameplay on iPhone with the performance overlay visible](media/ios-gameplay-performance-hud.png)
 
-*Gameplay with the on-device performance overlay. HUD readings are snapshots of a particular scene and thermal condition, not an A/B benchmark or a sustained-performance claim.*
+*Previously captured iPhone gameplay with the performance overlay. This screenshot predates the latest measurements; its HUD reading is not the current benchmark average.*
+
+The full campaign, long-session stability, and complete visual equivalence remain unvalidated. There is no public release date or broad device-support claim.
 
 ## What's next
 
-- Validate and benchmark the latest RSX command-processing change.
-- Reduce serial renderer overhead and unnecessary vertex/data conversions.
-- Improve frame pacing, thermal behavior, and longer-session stability.
+- Move from small DMA/cache variations to the **large computation and dependency chain that holds up the main game thread**.
+- Measure the complete candidate SPU job sub-call chain, including its deferred execution, before choosing an ARM64 or Metal replacement. CPU profile percentages alone are not removable frame time.
+- Continue investigating CPU/GPU data ownership and synchronization; guest-buffer copies cannot be removed while reference consumers still require them.
+- Improve frame pacing, sustained thermal behavior, and longer-session stability.
 - Add touch controls and expand controller testing.
 - Adapt the camera/projection to wider iPhone aspect ratios without stretching the image.
-- Expand save/load, visual-correctness, and gameplay testing beyond the opening area.
+- Expand save/load, visual-correctness, and gameplay testing beyond the areas tested so far.
 
 ## Follow the development
 
