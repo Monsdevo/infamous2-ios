@@ -28,7 +28,7 @@ The game runs **on the iPhone itself**. A Mac is used for development and instal
 
 ## Current status
 
-**Updated November 5, 2026 · Latest device build: 56**
+**Updated November 7, 2026 · Latest device build: 67**
 
 The project has moved beyond an empty Metal view: **the actual game boots and reaches controllable gameplay on a real iPhone 15 Pro.**
 
@@ -86,7 +86,7 @@ The working baseline uses O2-compiled SPU code, adapted guest-memory mapping and
 
 ### What we tried without an accepted FPS gain
 
-Since the previous update, the RSX comparison has been completed and additional renderer, SPU, and DMA experiments have been tested. Several ideas reduced local work or passed correctness checks without improving the time between presented frames.
+Renderer, SPU, and DMA experiments have been tested on Mac and iPhone. Several reduced work in a specific stage while leaving the overall frame interval effectively unchanged.
 
 | Experiment | Tested on | Result |
 |---|---|---|
@@ -101,8 +101,16 @@ Since the previous update, the RSX comparison has been completed and additional 
 | Overlay signature / page rejection filter | iPhone | Approximately **10.04 vs. 10.02 FPS** for reference vs. candidate; no meaningful gain. |
 | Inlining frequent MFC channel accesses | iPhone | Approximately **8.83 vs. 8.73 FPS**; no meaningful gain. |
 | Aligning MFC registry slots to 128 bytes | iPhone | Approximately **8.96 vs. 8.74 FPS**; no meaningful gain. The original slot layout was restored. |
+| Compact vertex transfer (build 64) | iPhone | Vertex preparation CPU time fell from **21.22 to 16.93 ms** in short traces. In a separate A/B/A test, the mean frame interval was **0.41 ms** lower than the average of the two references and the median held steady. |
+| Reusing the depth synchronization point for the normal buffer (build 67) | iPhone | One fewer Metal submission per frame in the sampled traces and about **1 ms less median synchronous wait**. With the experiment enabled, the test averaged **9.42 FPS** between **9.30** and **9.20 FPS** references. The frame-time median held steady and the experiment remains off by default. |
 
 These outcomes describe the implementations and scenes tested. They do not prove that geometry, caching, or DMA can never be optimized. Small positive or negative differences are not treated as causal speedups or regressions when the reference itself drifts. Unproven geometry, cache, and DMA alternatives are kept out of the normal optimized profile.
+
+### What the renderer traces revealed
+
+The first full-resolution depth readback blocks the RSX renderer thread for **14–17 ms** in the sampled iPhone frames. Most of that interval overlaps GPU execution. The depth copy itself accounts for roughly **1.6–1.8 ms**. Removing the first wait would help only to the extent that CPU work can overlap that GPU execution. Build 67 removed the later normal-buffer wait while preserving both guest-memory copies.
+
+The first observed reader of the full-resolution depth was the original SPU depth stage of SSAO, even with Metal SSAO enabled. On-device comparisons of the 640×360 SPU and Metal outputs found differences of at most two units in the last place (ULPs) in the sampled frames. Short traces found no readers of the guest half-resolution copy at the instrumented points. Coverage is limited to the sampled scenes and access paths, so the original depth stage remains in place.
 
 ### How comparisons are checked
 
@@ -112,16 +120,14 @@ Where practical, reference and candidate runs are bracketed by a return to the r
 
 ## Performance today
 
-**The latest reference measurement is approximately 9 FPS in the saved swamp scene on iPhone 15 Pro. The opening waterfront benchmark is approximately 7 FPS.** There is no measured full-game average.
+**Build 67 averaged about 9.25 FPS in the saved swamp scene on iPhone 15 Pro with the new experiment disabled. The earlier opening waterfront benchmark averaged about 7 FPS.** Both figures describe stationary scenes. A full-game average is still unknown.
 
 | Reference scene | Average FPS | Mean frame interval | Conditions |
 |---|---:|---:|---|
 | Opening waterfront, verified combined profile | **6.99** | **143.0 ms** | Stationary, externally cooled, nominal thermal category; October 31 |
-| Saved swamp / wooden walkway, latest reference | **8.96** | **111.6 ms** | Stationary, naturally warmed phone, serious thermal category; November 4 |
+| Saved swamp / wooden walkway, build 67 reference | **9.25** | **108.1 ms** | Stationary, naturally warmed phone, serious thermal category; November 7 |
 
-The latest swamp result combines the frame counts and elapsed presentation time of two reference windows bracketing the alignment experiment. Those windows individually measured **9.28 and 8.64 FPS**. Other recent swamp reference runs were around **8.8–10.0 FPS**, illustrating variation between runs even in the same thermal category.
-
-**The difference between the waterfront and swamp numbers is a difference in scene and test conditions, not evidence of a 7 → 9 FPS optimization gain.** Lighter menus and opening sequences can run faster. Gameplay remains below the desired performance level, and sustained 30 FPS has not been achieved.
+The latest swamp result pools the two reference windows that bracketed the fence experiment. They individually measured **9.30 and 9.20 FPS**. The waterfront benchmark uses a different scene and thermal condition. Sustained 30 FPS remains a goal.
 
 ![Gameplay on iPhone with the performance overlay visible](media/ios-gameplay-performance-hud.png)
 
@@ -131,9 +137,8 @@ The full campaign, long-session stability, and complete visual equivalence remai
 
 ## What's next
 
-- Move from small DMA/cache variations to the **large computation and dependency chain that holds up the main game thread**.
-- Measure the complete candidate SPU job sub-call chain, including its deferred execution, before choosing an ARM64 or Metal replacement. CPU profile percentages alone are not removable frame time.
-- Continue investigating CPU/GPU data ownership and synchronization; guest-buffer copies cannot be removed while reference consumers still require them.
+- Prototype a Metal path that avoids the first synchronous depth readback while preserving the original SPU fallback and completion signals.
+- Check whether the change reduces the interval between presented frames or moves the wait to a later synchronization point. Validate across additional scenes before considering it for the default profile.
 - Improve frame pacing, sustained thermal behavior, and longer-session stability.
 - Add touch controls and expand controller testing.
 - Adapt the camera/projection to wider iPhone aspect ratios without stretching the image.
