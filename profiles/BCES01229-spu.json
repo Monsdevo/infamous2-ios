@@ -1,0 +1,18 @@
+{
+  "profile": "BCES01229-01.00",
+  "runtime_validated": false,
+  "wws": {
+    "guest_va": "0x887100", "raw_bytes": 11824, "dma_bytes": 11904,
+    "lsa": "0xa00", "entry": "0xa00", "resume": "0xa2c", "image_id": 3,
+    "pointer_slot": "0x96bd7c", "size_slot": "0x96bd80",
+    "pointer_getter": "0x505fe8", "size_getter": "0x505ff0",
+    "spurs_initialize_stub": "0x6e95b0", "spurs_initialize_nid": "0xefeb2679"
+  },
+  "code_boundaries": [
+    {"module": "jobmod_4ccdc05864ab_e9808", "sha256": "8ef54c3902ace3af8a06d85366d28bc268f8bd0d15277eadee93f74ab19d0016", "code_end": "0xdba0", "tail_prefix": "08090a0b0c0d0e0f1011121314151617", "retained_tail_entry": "0xdb90", "reason": "byte shuffle vectors, float constants after final return"},
+    {"module": "jobmod_512689a33f01_ec7c0", "sha256": "d25d900a793dc15b5802d5d0bdad34e715641efdcbc19558bd55df4c2a9e115b", "code_end": "0x12618", "tail_prefix": "00000000000000000405060708090a0b", "retained_tail_entry": "0x12608", "reason": "zero padding and byte vectors after final branch to 0x11f38"},
+    {"module": "jobmod_77f8b0e2e976_efe70", "sha256": "3839edebebfc0ca550873e41d0754d75fce98bc24054844d5472b2a664203a64", "code_end": "0x1dc30", "tail_prefix": "4544474520415353455254494f4e2046", "retained_tail_entry": "0x1dc1c", "reason": "EDGE assertion strings after returns and nop padding"},
+    {"module": "jobmod_c2b472ca8382_e5a00", "sha256": "6e15b3cbd084f165294c0f1509ed7fa2cc4716c930cd6b7236a7cb138ad07ff9", "code_end": "0x9e50", "tail_prefix": "000000000000000000000000ffc00000", "retained_tail_entry": "0x9e20", "reason": "zero padding, NaN and byte vectors after final branch to 0x9dc0"},
+    {"module": "jobmod_d0d15ec83992_ea2a0", "sha256": "b713689924faad1452b20ae59d4a6b4dcf2c8fa882050bc900a3dcf05daf6a69", "code_end": "0xe740", "tail_prefix": "fffffffcfffffffafffffffc00000000", "retained_tail_entry": "0xe72c", "reason": "integer/float constants and strings after returns and nop padding"}
+  ]
+}

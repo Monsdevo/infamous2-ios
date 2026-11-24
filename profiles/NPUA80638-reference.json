@@ -1,0 +1,17 @@
+{
+  "name": "NPUA80638-reference",
+  "status": "reference_only",
+  "game_boot_enabled": false,
+  "title_id": "NPUA80638",
+  "app_version": null,
+  "elf_sha256": null,
+  "code_end_exclusive": "0x742e18",
+  "required_file_ranges": [
+    {"address": "0x742e17", "bytes": 1},
+    {"address": "0x8e5b00", "bytes": 11904}
+  ],
+  "notes": [
+    "Pinned upstream reference. Old infamous2 README mentions APP_VER 01.03; ROADMAP installer plan mentions 01.00.",
+    "No canonical ELF hash or local reference executable is available."
+  ]
+}

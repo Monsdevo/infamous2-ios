@@ -1,0 +1,17 @@
+{
+  "version": "4.93",
+  "pup_sha256": "158471fd834f8ea8036136b6aab43cd86c7ba73d79ca30e0af3c0fe0001cf365",
+  "runtime_validated": false,
+  "ppu_lifter_source_sha256": "0e02164dca5ec00938686f0e1f9590a87400274ea23739124c8680d2cbdf2780",
+  "libsre_image_sha256": "d6eaeda6ff40d0c075578bcfa6c4d4a21ceff4c8db8abf273cca425f0c351f7a",
+  "spu_bodies": [
+    {"offset": "0x21480", "bytes": "0x2200", "code_bytes": "0x2110", "pointer_slot": "0x31c0c", "size_slot": "0x31c10", "sha256": "fbe18b5448c86bda5545b387b55de37022d6992317d785a526f38a5b4c7cf81a"},
+    {"offset": "0x23680", "bytes": "0x1e40", "code_bytes": "0x1c00", "pointer_slot": "0x31e64", "size_slot": "0x31e68", "sha256": "c514efddd5d2a9a5f4e5c206deda3698c7726fd564762da33f49738ca3592cf2"},
+    {"offset": "0x2a180", "bytes": "0x3e30", "code_bytes": "0x3cf0", "pointer_slot": "0x31f0c", "size_slot": "0x31f10", "sha256": "cd1501a4d03a5cb480b5028ac8b6328251af28a85268167698d75a22997cb554"}
+  ],
+  "modules": [
+    {"name": "liblv2", "base": "0x30000000", "sha256": "aac69540830b4a6673b93331bf52266f360551a2732adcbb3c7a808daddf09c5", "sprx_sha256": "9ee23fd2eb693ce35d110ccb11a79fee9bdce75c8ada9dc7cb6462fd2c2bbca9"},
+    {"name": "libsysmodule", "base": "0x30180000", "sha256": "6e4c69756c84a0965206e64fee264c14d0e5ae09e35ec37f6713f519283c3be0", "sprx_sha256": "b7985b538c8de98a8fd47e3fecbc87a5b0a863a0e579785ad1410e18394a5a7d"},
+    {"name": "libsre", "base": "0x30100000", "sha256": "9e7ee6edc99b1d372686cf927b883b18f19ed4d32d1faf35e214cca4ae0737b6", "sprx_sha256": "71bd866d0bb6fec74800cfb16bd6c7da55661c49a2aabdfd40b05f0e61d46bb0"}
+  ]
+}

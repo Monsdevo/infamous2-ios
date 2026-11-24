@@ -24,11 +24,13 @@ This is an independent porting project built around the original game's code and
 
 The game runs **on the iPhone itself**. A Mac is used for development and installation; gameplay does not depend on streaming, remote rendering, or a connected computer. The CPU code is statically recompiled for ARM64, with Metal used for rendering and selected compute workloads. The CPU runtime does not require JIT compilation.
 
-**This repository is a public showcase and progress tracker. The implementation is not open source at this stage.** No source code, game data, firmware, or installable builds are published here.
+This repository now contains the iOS application source, platform adaptations, Metal experiments, build tools, and development notes. The port is open source under the MIT License. Third-party components retain their respective licenses. See [LICENSE](LICENSE), [upstream port license](resources/UpstreamPortLicense.txt), and [third-party notices](resources/ThirdPartyNotices.txt).
+
+You supply the required game and firmware inputs locally. Generated game code, game data, firmware, and installable builds are excluded from this repository.
 
 ## Current status
 
-**Updated November 7, 2026 · Latest device build: 67**
+**Updated November 24, 2026 · Latest tested device build: 67**
 
 The project has moved beyond an empty Metal view: **the actual game boots and reaches controllable gameplay on a real iPhone 15 Pro.**
 
@@ -143,6 +145,20 @@ The full campaign, long-session stability, and complete visual equivalence remai
 - Add touch controls and expand controller testing.
 - Adapt the camera/projection to wider iPhone aspect ratios without stretching the image.
 - Expand save/load, visual-correctness, and gameplay testing beyond the areas tested so far.
+
+## Source layout and development
+
+- `src/` contains the UIKit application, platform support, and game integration.
+- `tools/` contains input checks, source preparation, build helpers, and measurement tools.
+- `cmake/`, `patches/`, and `sources.lock.json` define build targets and pinned dependencies.
+- `profiles/` describes the supported inputs. The current iOS work targets **BCES01229 / 01.00**. The original macOS port targets a different game build.
+- `docs/` contains the development record, including experiments and device results. Some notes reference local paths and generated files from the development machine.
+
+Start with [architecture](docs/architecture-tr.md), [game inputs](docs/game-inputs-tr.md), and [input inspection](docs/input-inspection-tr.md). These development notes are primarily in Turkish. The source is an experimental development snapshot; a clean-machine build from this public checkout has yet to be verified.
+
+Use `sources.lock.json` and the setup scripts in `tools/` to obtain the pinned dependencies. Build dependencies for the iPhoneOS SDK and use your own Xcode signing team. Preparation scripts generate game code locally from the required inputs. On an 8 GB development Mac, use a single build job and allow ample storage for generated sources and build products.
+
+The latest renderer experiment is documented in [build 67](docs/gbuffer-fence67-tr.md). It remains opt-in because a repeatable gameplay FPS gain has yet to be established.
 
 ## Follow the development
 

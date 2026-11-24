@@ -1,0 +1,349 @@
+--- a/libs/video/rsx_metal_backend.m
++++ b/libs/video/rsx_metal_backend.m
+@@ -46,7 +46,12 @@
+  * no route to a custom vertex program, depth/stencil, MRT or render-to-texture,
+  * so it cannot grow into the real pipeline.
+  */
++#include <TargetConditionals.h>
+ #import <Metal/Metal.h>
++#include "RSXMetalSurface.h"
++extern void game_telemetry_present(double) __attribute__((weak_import));
++extern void game_telemetry_gpu(double, double) __attribute__((weak_import));
++extern void game_telemetry_pipeline(int, double) __attribute__((weak_import));
+ #import <QuartzCore/CAMetalLayer.h>
+ #import <QuartzCore/QuartzCore.h>
+ #if !TARGET_OS_IPHONE
+@@ -68,7 +73,7 @@
+ #include "rsx_fp_decompiler.h"
+ #include "rsx_shader_msl.h"
+ #include "rsx_texture_layout.h"
+-#include "../../include/ps3emu/ps3_ftrace.h"   /* PS3_FTRACE: encode / GPU wait / readback spans */
++#include "ps3emu/ps3_ftrace.h"   /* PS3_FTRACE: encode / GPU wait / readback spans */
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -80,7 +85,12 @@
+ static CAMetalLayer*       s_layer;      /* windowed only   */
+ static id<MTLTexture>      s_offscreen;  /* headless only   */
+ static id<MTLTexture>      s_depth;      /* depth + stencil, both surfaces  */
++#if !TARGET_OS_IPHONE
+ static NSWindow*           s_window;
++#else
++static CAMetalLayer* s_ios_layer;
++static uint64_t s_ios_submitted, s_ios_completed, s_ios_presented, s_ios_errors;
++#endif
+ static int                 s_headless;
+ static int                 s_closed;
+ static int                 s_ready;
+@@ -176,6 +186,70 @@
+ static void fps_track_drawable(id<CAMetalDrawable> drawable) { (void)drawable; }
+ void rsx_metal_backend_note_guest_frame(void) {}
+ #endif
++
++#if TARGET_OS_IPHONE
++int rsx_metal_backend_attach_ios_layer(void* layer)
++{
++    if (s_ready || ![NSThread isMainThread]) return -1;
++    id object = (__bridge id)layer;
++    if (object && ![object isKindOfClass:CAMetalLayer.class]) return -1;
++    s_ios_layer = object;
++    return 0;
++}
++RSXSurfaceStats rsx_metal_backend_ios_stats(void)
++{
++    return (RSXSurfaceStats){
++        __atomic_load_n(&s_ios_submitted, __ATOMIC_RELAXED),
++        __atomic_load_n(&s_ios_completed, __ATOMIC_RELAXED),
++        __atomic_load_n(&s_ios_presented, __ATOMIC_RELAXED),
++        __atomic_load_n(&s_ios_errors, __ATOMIC_RELAXED)};
++}
++#endif
++
++/* Observe allocation failures without changing descriptor/shader behavior. */
++static id<MTLRenderPipelineState> ios_profiled_pipeline(id<MTLDevice> device,
++        MTLRenderPipelineDescriptor* descriptor, NSError** error)
++{
++#if TARGET_OS_IPHONE
++    if (game_telemetry_pipeline) game_telemetry_pipeline(0, CACurrentMediaTime());
++#endif
++    id<MTLRenderPipelineState> result = [device newRenderPipelineStateWithDescriptor:descriptor error:error];
++#if TARGET_OS_IPHONE
++    if (game_telemetry_pipeline) game_telemetry_pipeline(result ? 1 : 2, CACurrentMediaTime());
++#endif
++    return result;
++}
++
++/* Diagnostic counters observe real backend submissions; they do not count
++ * synthetic host frames as guest game frames, or add a per-frame GPU wait. */
++static void surface_track_submission(id<MTLCommandBuffer> cb, id<CAMetalDrawable> drawable)
++{
++#if TARGET_OS_IPHONE
++    if (!drawable) return;
++    const uint64_t sequence = __atomic_add_fetch(&s_ios_submitted, 1, __ATOMIC_RELAXED);
++#if !TARGET_OS_SIMULATOR
++    [drawable addPresentedHandler:^(id<MTLDrawable> shown) {
++        if (game_telemetry_present) game_telemetry_present(shown.presentedTime);
++        __atomic_add_fetch(&s_ios_presented, 1, __ATOMIC_RELAXED);
++    }];
++#endif
++    [cb addCompletedHandler:^(id<MTLCommandBuffer> finished) {
++        if (finished.status == MTLCommandBufferStatusCompleted) {
++            if (game_telemetry_gpu && finished.GPUEndTime > finished.GPUStartTime && finished.GPUStartTime > 0)
++                game_telemetry_gpu(CACurrentMediaTime(), (finished.GPUEndTime - finished.GPUStartTime) * 1000.0);
++            __atomic_add_fetch(&s_ios_completed, 1, __ATOMIC_RELAXED);
++        } else {
++            __atomic_add_fetch(&s_ios_errors, 1, __ATOMIC_RELAXED);
++        }
++        if (sequence <= 3 || finished.error)
++            fprintf(stderr, "[RSX surface] submission=%llu status=%lu error=%s\n",
++                (unsigned long long)sequence, (unsigned long)finished.status,
++                finished.error ? finished.error.localizedDescription.UTF8String : "none");
++    }];
++#else
++    (void)cb; (void)drawable;
++#endif
++}
+ 
+ /* ---- vertex layout ----------------------------------------------------------
+  * Every draw carries all 16 RSX vertex attributes as float4, fetched on the
+@@ -459,7 +533,9 @@
+     u32 w = state->surface_clip_w, h = state->surface_clip_h;
+     if (!w || !h || (w == s_width && h == s_height)) return;
+     s_width = w; s_height = h;
++#if !TARGET_OS_IPHONE
+     if (s_layer) s_layer.drawableSize = CGSizeMake((CGFloat)w, (CGFloat)h);
++#endif /* UIKit owns drawable size; guest render targets are independent. */
+     if (s_depth && create_depth() != 0)
+         fprintf(stderr, "[RSX metal] depth/stencil resize to %ux%u failed; "
+                         "the old buffer stays bound\n", w, h);
+@@ -1901,7 +1977,7 @@
+ 
+     NSError* err = nil;
+     id<MTLRenderPipelineState> pso =
+-        [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++        ios_profiled_pipeline(s_dev, pd, &err);
+     if (!pso) {
+         fprintf(stderr, "[RSX metal] pipeline state failed (vs %d, fs %d): %s\n",
+                 d->vs_idx, d->fs_idx, [[err localizedDescription] UTF8String]);
+@@ -2630,7 +2706,8 @@
+     if (s_eng_slot < 0) {                       /* first data of this submission: take a slot */
+         const int k = (int)(s_eng_slot_next++ % ENG_STAGE_SLOTS);
+         if (__atomic_load_n(&s_eng_slot_busy[k], __ATOMIC_ACQUIRE)) {
+-            if ((++s_eng_slot_waits & (s_eng_slot_waits - 1)) == 0)    /* 1, 2, 4, ... */
++            ++s_eng_slot_waits;
++            if ((s_eng_slot_waits & (s_eng_slot_waits - 1)) == 0)    /* 1, 2, 4, ... */
+                 fprintf(stderr, "[rsx engine/metal] staging slot still in flight: waited %lu time(s)\n",
+                         s_eng_slot_waits);
+             while (__atomic_load_n(&s_eng_slot_busy[k], __ATOMIC_ACQUIRE)) usleep(50);
+@@ -2882,7 +2959,7 @@
+         pd.fragmentFunction = [s_eng_helper_lib newFunctionWithName:@"eng_depth_fs"];
+         pd.colorAttachments[0].pixelFormat = MTLPixelFormatR32Float;
+         NSError* err = nil;
+-        s_eng_depth_pso = [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++        s_eng_depth_pso = ios_profiled_pipeline(s_dev, pd, &err);
+         if (!s_eng_depth_pso) {
+             fprintf(stderr, "[rsx engine/metal] depth resolve pipeline failed: %s\n",
+                     [[err localizedDescription] UTF8String]);
+@@ -2974,7 +3051,7 @@
+         pd.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+         pd.colorAttachments[1].pixelFormat = MTLPixelFormatRGBA8Unorm;
+         NSError* err = nil;
+-        s_eng_light_pso = [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++        s_eng_light_pso = ios_profiled_pipeline(s_dev, pd, &err);
+         if (!s_eng_light_pso) {
+             fprintf(stderr, "[rsx engine/metal] light pipeline failed: %s\n",
+                     [[err localizedDescription] UTF8String]);
+@@ -3026,7 +3103,7 @@
+     pd.fragmentFunction = [s_eng_helper_lib newFunctionWithName:[NSString stringWithUTF8String:fn]];
+     pd.colorAttachments[0].pixelFormat = fmt;
+     NSError* err = nil;
+-    id<MTLRenderPipelineState> p = [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++    id<MTLRenderPipelineState> p = ios_profiled_pipeline(s_dev, pd, &err);
+     if (!p) fprintf(stderr, "[rsx engine/metal] SSAO pipeline %s failed: %s\n", fn,
+                     [[err localizedDescription] UTF8String]);
+     return p;
+@@ -3083,7 +3160,7 @@
+         pd.fragmentFunction = [s_eng_helper_lib newFunctionWithName:@"eng_depth_rgba8_fs"];
+         pd.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+         NSError* err = nil;
+-        s_eng_depth_rgba_pso = [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++        s_eng_depth_rgba_pso = ios_profiled_pipeline(s_dev, pd, &err);
+         if (!s_eng_depth_rgba_pso) {
+             fprintf(stderr, "[rsx engine/metal] depth rgba8 pipeline failed: %s\n",
+                     [[err localizedDescription] UTF8String]);
+@@ -3291,7 +3368,7 @@
+ 
+     NSError* err = nil;
+     id<MTLRenderPipelineState> pso =
+-        [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++        ios_profiled_pipeline(s_dev, pd, &err);
+     if (!pso) {
+         fprintf(stderr, "[rsx engine/metal] pipeline state failed: %s\n",
+                 [[err localizedDescription] UTF8String]);
+@@ -3854,7 +3931,7 @@
+               pd.colorAttachments[0].pixelFormat = [rt0 pixelFormat];
+               pd.depthAttachmentPixelFormat   = MTL_DEPTH_FORMAT;
+               pd.stencilAttachmentPixelFormat = MTL_DEPTH_FORMAT;
+-              pso = [s_dev newRenderPipelineStateWithDescriptor:pd error:nil];
++              pso = ios_profiled_pipeline(s_dev, pd, nil);
+               fmt = [rt0 pixelFormat];
+           }
+           if (pso) {
+@@ -4197,7 +4274,7 @@
+         pd.fragmentFunction = [s_eng_helper_lib newFunctionWithName:@"eng_present_fs"];
+         pd.colorAttachments[0].pixelFormat = [dst pixelFormat];
+         NSError* err = nil;
+-        s_eng_blit_pso = [s_dev newRenderPipelineStateWithDescriptor:pd error:&err];
++        s_eng_blit_pso = ios_profiled_pipeline(s_dev, pd, &err);
+         if (!s_eng_blit_pso) {
+             fprintf(stderr, "[rsx engine/metal] present pipeline failed: %s\n",
+                     [[err localizedDescription] UTF8String]);
+@@ -4349,7 +4426,7 @@
+         id<MTLCommandBuffer> cb = [s_queue commandBuffer];
+         eng_encode_records(cb, stage);
+         if (present_dst && dst) eng_blit_to_display(cb, present_dst, dst);
+-        if (drawable) { fps_track_drawable(drawable); [cb presentDrawable:drawable]; }
++        if (drawable) { fps_track_drawable(drawable); surface_track_submission(cb, drawable); [cb presentDrawable:drawable]; }
+         if (PS3_FT_ON()) ps3_ft_span(PS3_FT_GPU_ENCODE, 0, present_dst ? 1u : 0u, ft_nrec, pt, eng_pt_now());
+         if (windowed_present) { pt1 = eng_pt_now(); s_pt_ns[2] += pt1 - pt; pt = pt1; }
+         if (windowed_present) {
+@@ -4657,7 +4734,11 @@
+         const char* hl = getenv("PS3RECOMP_METAL_HEADLESS");
+         s_headless = (hl && *hl && *hl != '0');
+ 
++#if TARGET_OS_IPHONE
++        s_dev = s_ios_layer.device ?: MTLCreateSystemDefaultDevice();
++#else
+         s_dev = MTLCreateSystemDefaultDevice();
++#endif
+         if (!s_dev) {
+             fprintf(stderr, "[RSX metal] no Metal device available\n");
+             return -1;
+@@ -4670,8 +4751,13 @@
+ 
+         int rc;
+ #if TARGET_OS_IPHONE
+-        s_headless = 1;
+-        rc = create_offscreen();
++        /* No external layer retains the original headless fallback. */
++        s_headless = s_headless || !s_ios_layer;
++        if (s_headless) rc = create_offscreen();
++        else {
++            s_layer = s_ios_layer;
++            rc = (s_layer.device == s_dev && s_layer.pixelFormat == MTLPixelFormatBGRA8Unorm) ? 0 : -1;
++        }
+ #else
+         rc = s_headless ? create_offscreen() : create_window(title);
+ #endif
+@@ -4779,6 +4865,9 @@
+         s_default_sampler = nil;
+         s_ds_default = nil;
+         s_layer     = nil;
++#if TARGET_OS_IPHONE
++        s_ios_layer = nil;
++#endif
+         s_offscreen = nil;
+         s_depth     = nil;
+         s_queue     = nil;
+@@ -4957,7 +5046,7 @@
+         }
+         if (enc) [enc endEncoding];
+ 
+-        if (drawable) { fps_track_drawable(drawable); [cb presentDrawable:drawable]; }
++        if (drawable) { fps_track_drawable(drawable); surface_track_submission(cb, drawable); [cb presentDrawable:drawable]; }
+ 
+         if (s_headless) {
+             /* The readback below must see a completed frame. */
+--- a/libs/video/rsx_draw_engine.c
++++ b/libs/video/rsx_draw_engine.c
+@@ -1,4 +1,7 @@
+ #if defined(__APPLE__)
++#include <TargetConditionals.h>
++#endif
++#if defined(__APPLE__) && !TARGET_OS_IPHONE
+ #include <mach/mach.h>
+ #include <mach/mach_vm.h>
+ #endif
+@@ -3062,7 +3065,7 @@
+               pat[k*4+2] = (uint8_t)(w >> 8); pat[k*4+3] = (uint8_t)w;
+           }
+           int hits = 0;
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !TARGET_OS_IPHONE
+           /* Only readable host regions: most of the 4 GB window is PROT_NONE. */
+           if (vm_base && (pat[0] | pat[1] | pat[4] | pat[5])) {
+               mach_vm_address_t addr = (mach_vm_address_t)(uintptr_t)vm_base;
+--- a/libs/video/rsx_shader_msl.cpp
++++ b/libs/video/rsx_shader_msl.cpp
+@@ -25,6 +25,9 @@
+  *     not predict. Only options that exist in the spirv-cross Debian and
+  *     Ubuntu package are used.
+  */
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#endif
+ #include <cstdlib>
+ #include "rsx_shader_msl.h"
+ #include <stdio.h>
+@@ -34,12 +37,33 @@
+ 
+ #include <glslang/Public/ShaderLang.h>
+ #include <glslang/Public/ResourceLimits.h>
++#if __has_include(<glslang/SPIRV/GlslangToSpv.h>)
+ #include <glslang/SPIRV/GlslangToSpv.h>
++#else
++#include <SPIRV/GlslangToSpv.h> // glslang source-tree include layout
++#endif
+ #include <spirv_cross_c.h>
+ #include <string>
+ #include <vector>
+ 
++#if defined(__APPLE__)
++extern "C" void bces_shader_trace_begin(const char*, int) __attribute__((weak_import));
++extern "C" void bces_shader_trace_end(int) __attribute__((weak_import));
++#endif
+ namespace {
++struct ShaderTraceScope {
++    int result=-1;
++    ShaderTraceScope(const char* hlsl,int stage) {
++#if defined(__APPLE__)
++        if(bces_shader_trace_begin)bces_shader_trace_begin(hlsl,stage);
++#endif
++    }
++    ~ShaderTraceScope() {
++#if defined(__APPLE__)
++        if(bces_shader_trace_end)bces_shader_trace_end(result);
++#endif
++    }
++};
+ 
+ void put_log(char* log, u32 log_size, const char* what, const char* detail)
+ {
+@@ -138,7 +162,11 @@
+     /* MSL 2.1: arrays of textures need 2.0, and every Apple Silicon Mac
+      * speaks 2.3 or later, so nothing in range is excluded. */
+     spvc_compiler_options_set_uint(opt, SPVC_COMPILER_OPTION_MSL_VERSION, 20100u);
++#if defined(__APPLE__) && TARGET_OS_IPHONE
++    spvc_compiler_options_set_uint(opt, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_IOS);
++#else
+     spvc_compiler_options_set_uint(opt, SPVC_COMPILER_OPTION_MSL_PLATFORM, SPVC_MSL_PLATFORM_MACOS);
++#endif
+     spvc_compiler_options_set_bool(opt, SPVC_COMPILER_OPTION_MSL_ENABLE_DECORATION_BINDING, SPVC_TRUE);
+     if (spvc_compiler_install_compiler_options(comp, opt) != SPVC_SUCCESS) {
+         put_log(log, log_size, "MSL options install", spvc_context_get_last_error_string(ctx));
+@@ -190,6 +218,7 @@
+         return -1;
+     }
+     out[0] = '\0';
++    ShaderTraceScope trace(hlsl,stage);
+     if (!glslang_ready()) {
+         put_log(log, log_size, "glslang::InitializeProcess failed", nullptr);
+         return -1;
+@@ -198,6 +227,7 @@
+     std::vector<unsigned int> spirv;
+     if (!hlsl_to_spirv(hlsl, lang, spirv, log, log_size)) return -1;
+     if (!spirv_to_msl(spirv, out, out_size, log, log_size)) return -1;
++    trace.result=0;
+     return 0;
+ }
+ 

@@ -1,0 +1,185 @@
+--- a/runtime/platform/win32_compat.c
++++ b/runtime/platform/win32_compat.c
+@@ -49,7 +49,12 @@
+  * while all that is wanted here is the ucontext_t a signal handler is given. */
+ #  include <sys/ucontext.h>
+ #  include <mach/mach.h>
+-#  include <mach/mach_vm.h>
++#  include <TargetConditionals.h>
++#  if TARGET_OS_IPHONE
++#    include <mach/vm_map.h>
++#  else
++#    include <mach/mach_vm.h>
++#  endif
+ #  include <mach/thread_act.h>
+ #  include <pthread/qos.h>
+ #else
+@@ -1547,13 +1552,26 @@
+     /* mach_vm_region searches UPWARDS from the address it is given and reports
+      * where it landed, so one call answers both questions: a base above the
+      * address means nothing is mapped at it, and that base is the gap's end. */
++#if TARGET_OS_IPHONE
++    /* iOS SDK exposes vm_region_64 through vm_map.h, not mach_vm.h.
++     * On our arm64 target vm_address_t/vm_size_t retain pointer width. */
++    _Static_assert(sizeof(vm_address_t) == sizeof(uintptr_t), "VM query truncates addresses");
++    vm_address_t a = (vm_address_t)addr;
++    vm_size_t sz = 0;
++#else
+     mach_vm_address_t a = (mach_vm_address_t)addr;
+     mach_vm_size_t    sz = 0;
++#endif
+     vm_region_basic_info_data_64_t info;
+     mach_msg_type_number_t cnt = VM_REGION_BASIC_INFO_COUNT_64;
+     mach_port_t name = MACH_PORT_NULL;
++#if TARGET_OS_IPHONE
++    kern_return_t kr = vm_region_64(mach_task_self(), &a, &sz, VM_REGION_BASIC_INFO_64,
++                                    (vm_region_info_t)&info, &cnt, &name);
++#else
+     kern_return_t kr = mach_vm_region(mach_task_self(), &a, &sz, VM_REGION_BASIC_INFO_64,
+                                       (vm_region_info_t)&info, &cnt, &name);
++#endif
+     if (name != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), name);
+     if (kr != KERN_SUCCESS) return 0;             /* nothing at or above it */
+     if ((uintptr_t)a > addr) { *next = (uintptr_t)a; return 0; }
+--- a/libs/spurs/cellFiber.c
++++ b/libs/spurs/cellFiber.c
+@@ -23,9 +23,13 @@
+ #define WIN32_LEAN_AND_MEAN
+ #include <windows.h>
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++#include "IOSFiberContext.h"
++#else
+ #include <ucontext.h>
+-
+-#if defined(__APPLE__)
++#endif
++
++#if defined(__APPLE__) && !defined(PS3RECOMP_IOS_FCONTEXT)
+ /* getcontext() points uc_mcontext at ucontext_t's own __mcontext_data member
+  * and writes uc_mcsize (816) bytes there. That member is declared only when
+  * _XOPEN_SOURCE was defined before <sys/_types/_ucontext.h> was first pulled
+@@ -59,7 +63,11 @@
+ #ifdef _WIN32
+     LPVOID     native_fiber;
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    IOSFiberContext context;
++#else
+     ucontext_t context;
++#endif
+     u8*        stack;
+ #endif
+ } FiberSlot;
+@@ -71,7 +79,11 @@
+ #ifdef _WIN32
+ static LPVOID s_scheduler_fiber = NULL;
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++static IOSFiberContext s_scheduler_context;
++#else
+ static ucontext_t s_scheduler_context;
++#endif
+ #endif
+ 
+ /* ---------------------------------------------------------------------------
+@@ -100,7 +112,11 @@
+     f->entry(f->arg);
+     f->state = CELL_FIBER_STATE_TERMINATED;
+     s_current_fiber = -1;
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    ios_fiber_set(&s_scheduler_context);
++#else
+     setcontext(&s_scheduler_context);
++#endif
+ }
+ #endif
+ 
+@@ -126,7 +142,11 @@
+         s_scheduler_fiber = GetCurrentFiber();
+     }
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    ios_fiber_scheduler_init(&s_scheduler_context);
++#else
+     getcontext(&s_scheduler_context);
++#endif
+ #endif
+ 
+     s_initialized = 1;
+@@ -221,12 +241,20 @@
+         f->in_use = 0;
+         return (s32)CELL_FIBER_ERROR_NOMEM;
+     }
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    if (ios_fiber_make(&f->context, f->stack, f->stack_size, fiber_trampoline,
++                       (int)(idx & 0xFFFF), (int)(idx >> 16)) != 0) {
++        free(f->stack); f->stack = NULL; f->in_use = 0;
++        return (s32)CELL_FIBER_ERROR_NOMEM;
++    }
++#else
+     getcontext(&f->context);
+     f->context.uc_stack.ss_sp = f->stack;
+     f->context.uc_stack.ss_size = f->stack_size;
+     f->context.uc_link = &s_scheduler_context;
+     makecontext(&f->context, (void (*)(void))fiber_trampoline, 2,
+                 (int)(idx & 0xFFFF), (int)(idx >> 16));
++#endif
+ #endif
+ 
+     vm_write32((u32)(uintptr_t)fiber, (u32)idx);
+@@ -297,10 +325,18 @@
+      * the scheduler resumed a fiber's stack instead of main's; and the
+      * calling fiber's context was never updated, so switching back to it
+      * restarted it from its entry point on the stack it was already using. */
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    IOSFiberContext* from = (prev >= 0 && prev != (s32)idx)
++#else
+     ucontext_t* from = (prev >= 0 && prev != (s32)idx)
++#endif
+                        ? &s_fibers[prev].context
+                        : &s_scheduler_context;
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    ios_fiber_swap(from, &s_fibers[idx].context);
++#else
+     swapcontext(from, &s_fibers[idx].context);
++#endif
+ #endif
+ 
+     return CELL_OK;
+@@ -318,7 +354,11 @@
+ #ifdef _WIN32
+     SwitchToFiber(s_scheduler_fiber);
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    ios_fiber_swap(&s_fibers[prev].context, &s_scheduler_context);
++#else
+     swapcontext(&s_fibers[prev].context, &s_scheduler_context);
++#endif
+ #endif
+     (void)prev;
+ 
+@@ -336,7 +376,11 @@
+ #ifdef _WIN32
+     SwitchToFiber(s_scheduler_fiber);
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    ios_fiber_set(&s_scheduler_context);
++#else
+     setcontext(&s_scheduler_context);
++#endif
+ #endif
+ 
+     return CELL_OK; /* unreachable */
+@@ -392,7 +436,11 @@
+ #ifdef _WIN32
+     SwitchToFiber(s_scheduler_fiber);
+ #else
++#if defined(PS3RECOMP_IOS_FCONTEXT)
++    ios_fiber_swap(&s_fibers[prev].context, &s_scheduler_context);
++#else
+     swapcontext(&s_fibers[prev].context, &s_scheduler_context);
++#endif
+ #endif
+     (void)prev;
+ 

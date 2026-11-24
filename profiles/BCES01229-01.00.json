@@ -1,0 +1,52 @@
+{
+  "name": "BCES01229-01.00",
+  "status": "native_boot_diagnostic",
+  "game_boot_enabled": false,
+  "title_id": "BCES01229",
+  "app_version": "01.00",
+  "sfo_sha256": "1f2c42fab22b776360839a3c9cd285e98fb0b4276c92859c7081b9e34d29e45d",
+  "self_sha256": "55e80807c95ccec9f86d20b861a799309ac868215a6e2ace79ca817a6d4b3a70",
+  "elf_sha256": "e7aa498258def0c7d651df92dcbb6feaf3230f4486b874170c074e7ca9238be6",
+  "entry_opd": "0x94dd38",
+  "entry_code": "0x10230",
+  "toc": "0x973528",
+  "code_end_exclusive": "0x6eb2b0",
+  "required_file_ranges": [
+    {
+      "address": "0x10200",
+      "bytes": 44
+    },
+    {
+      "address": "0x6eb2ac",
+      "bytes": 4
+    }
+  ],
+  "spu_hooks": [
+    {
+      "name": "light",
+      "module": "jobmod_c6e7383dc013_e5400",
+      "image_id": 221,
+      "reference_image_id": 219,
+      "entry_lsa": "0x9400",
+      "hook_lsa": "0x4ac8",
+      "walk_lsa": "0x4578"
+    },
+    {
+      "name": "ssao",
+      "module": "jobmod_e6fe749031f8_e2060",
+      "image_id": 225,
+      "reference_image_id": 226,
+      "entry_lsa": "0x6060",
+      "hook_lsa": "0x4330"
+    }
+  ],
+  "wws_policy_guest_address": "0x887100",
+  "spu_mapping_profile": "BCES01229-spu.json",
+  "notes": [
+    "Observed hashes identify the locally inspected input; they do not establish runtime correctness.",
+    "Hook image IDs are derived from the pinned lift_jobmods.py sorted-module registration rule; execution is still unverified.",
+    "Full 7z and ISO CRC checks passed. Full assets are staged through the clean ISO9660 view; UDF/ISO9660 game paths and sizes match. PSARC internal integrity and runtime asset compatibility remain unverified.",
+    "WWS mapping is statically checked against BCES TOC slots, PPU getters and the SPURS import; runtime use is unverified.",
+    "All 164 title PPU chunks compile and link in the separate macOS diagnostic, and compile into a separate iPhoneOS archive. The Turkish new-game menu was visually confirmed on macOS after real installation and again on a subsequent boot. Production iOS game boot remains disabled; gameplay and iPhone compatibility remain unverified."
+  ]
+}

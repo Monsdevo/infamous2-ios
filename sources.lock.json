@@ -1,0 +1,138 @@
+{
+  "host_tools": {
+    "rpcs3_arm64": {
+      "version": "0.0.43-20329-8b76207a",
+      "release_tag": "build-8b76207aa888a283a9fe75c56517cc854972af59",
+      "archive_url": "https://github.com/RPCS3/rpcs3-binaries-mac-arm64/releases/download/build-8b76207aa888a283a9fe75c56517cc854972af59/rpcs3-v0.0.43-20329-8b76207a_macos_aarch64.7z",
+      "archive_sha256": "e9367390f13f62180d7441a3103f19ce90c54753c4d6caa2e7b0bd229070ea4b",
+      "use": "Host-only offline SELF-to-ELF preparation. Not linked or packaged in the iOS app."
+    }
+  },
+  "port": {
+    "url": "https://github.com/erikomis/infamous2-recomp.git",
+    "commit": "b76ecda525b2b02bb1ca59aca63024fdebb78d06"
+  },
+  "runtime": {
+    "url": "https://github.com/NoahBPeterson/ps3recomp.git",
+    "branch": "infamous/rebase-v0.13.0",
+    "commit": "770660a3971b87a453677e46125e5e01ac7891c0",
+    "patch": "infamous2-lle/patches/ps3recomp-fork-770660a-with-upstream-prs.patch",
+    "patch_sha256": "11846458ab9b3b29655e3dd3775fe6bd38e1001b406a60f6ed5ac76fcb5e9866"
+  },
+  "general_runtime_reference_only": {
+    "url": "https://github.com/sp00nznet/ps3recomp.git",
+    "commit": "39a36296511c445707adabcd312f0b740cfbd694"
+  },
+  "rea_reference_only": {
+    "url": "https://github.com/morluto/rea.git",
+    "commit": "7aa4b98c9829148b81211aff4e0413cb4ff2ff92"
+  },
+  "ios_renderer_overlay": {
+    "patch": "patches/ios-metal-surface.patch",
+    "patch_sha256": "f04469a10298b3e49fd6358f9b92f7cfb8ba8316e34744f892a438ec81d62038",
+    "source_sha256": {
+      "libs/video/rsx_metal_backend.m": "53c7e3582805a70ac2ddad2b6b360926b04236fd3389b4ecebc4738f25653965",
+      "libs/video/rsx_draw_engine.c": "79def8f931a06b2d82508bcade9d66576ce323bbf521cbdc1133d80fe56caeff",
+      "libs/video/rsx_shader_msl.cpp": "0147adc212ae0f2de0d25664921d77e22a496e28711fbee039dc89b15284ad32"
+    }
+  },
+  "shader_dependencies": [
+    {
+      "name": "glslang",
+      "url": "https://github.com/KhronosGroup/glslang.git",
+      "commit": "1062752a891c95b2bfeed9e356562d88f9df84ac",
+      "path": "upstream/shader-deps/glslang",
+      "version": "15.1.0"
+    },
+    {
+      "name": "spirv-cross",
+      "url": "https://github.com/KhronosGroup/SPIRV-Cross.git",
+      "commit": "ebe2aa0cd80f5eb5cd8a605da604cacf72205f3b",
+      "path": "upstream/shader-deps/spirv-cross",
+      "version": "vulkan-sdk-1.4.304.0"
+    },
+    {
+      "name": "spirv-tools",
+      "url": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+      "commit": "4d2f0b40bfe290dea6c6904dafdf7fd8328ba346",
+      "path": "upstream/shader-deps/glslang/External/spirv-tools",
+      "version": "glslang 15.1.0 known_good.json"
+    },
+    {
+      "name": "spirv-tools/external/spirv-headers",
+      "url": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+      "commit": "3f17b2af6784bfa2c5aa5dbb8e0e74a607dd8b3b",
+      "path": "upstream/shader-deps/glslang/External/spirv-tools/external/spirv-headers",
+      "version": "glslang 15.1.0 known_good.json"
+    }
+  ],
+  "ios_runtime_overlay": {
+    "patch": "patches/ios-runtime-vm.patch",
+    "patch_sha256": "d12bfda9ff21ce4fc3e87c4a96d62ef5b1b4b7a94a20e2ae884ad5726a3c40fb",
+    "source_sha256": {
+      "runtime/platform/win32_compat.c": "92d8faab2c061fd3d5f1833498b4f808cd258691d933f5500a4789c433d94044",
+      "libs/spurs/cellFiber.c": "d5f786c872cab5f4d0f89a4d7408f9e8e13030d14ae0bbc07a85c6e8f150e559"
+    }
+  },
+  "context_dependency": {
+    "name": "boost-context",
+    "url": "https://github.com/boostorg/context.git",
+    "commit": "afd2ce33722e223d75723f3b44dc9fa94302e764",
+    "version": "boost-1.88.0",
+    "path": "upstream/context-deps/boost-context"
+  },
+  "sdl_dependency": {
+    "name": "SDL2",
+    "url": "https://github.com/libsdl-org/SDL.git",
+    "commit": "5d249570393f7a37e037abf22cd6012a4cc56a71",
+    "version": "release-2.32.10",
+    "path": "upstream/platform-deps/SDL2"
+  },
+  "ios_ppu_host_stack": {
+    "source": "runtime/syscalls/sys_ppu_thread.c",
+    "source_sha256": "625d194c2b52c0d95ff3bd7c4f166ea9a53c26d56ae3667aa5d29a7cd03dd0e4",
+    "baseline_note": "Pinned fork plus locked combined upstream patch; retain ps3_ft_name additions",
+    "host_stack_bytes": 67108864
+  },
+  "ios_frame_diagnostics": {
+    "source_sha256": {
+      "include/ps3emu/ps3_ftrace.h": "f53dfa3a8a357bfd2499b95b505cab39efe575edfacf479ad8422fc853bb3bdd",
+      "runtime/spu/spu_channels.c": "5dbe49100ac8b67d7703ec037ace9afe6e59fffea2d0b9438127b2ccd19f81fd",
+      "libs/video/cellGcmSys.c": "4cf75af33c716b4fe808bf650847990833da361a4d3bb79291a0dfebcf082ced",
+      "runtime/spu/spu_dma.h": "c4ad38a5c03ae3f2e5f8f05ec37cb6f2173349beb8fd297b7244fb3b203de113"
+    },
+    "note": "Pinned runtime plus existing locked combined patch; build-only instrumentation"
+  },
+  "ios_rsx_legacy_fastpath": {
+    "source": "libs/video/rsx_commands.c",
+    "source_sha256": "ef2a1114e054a53cd44fb6c238c497f96ae7228d19d823a4d647e9f70e0935b8",
+    "scope": "Derived iOS GCM wrapper only; state-only skip requires dispatch and no legacy backend. Full original rsx_commands.o retained.",
+    "header": "libs/video/rsx_commands.h",
+    "header_sha256": "16c20fc075ed985f8a4e6ce25a48fd7c8830a900f77e53c0b7541b9bf3e090e2"
+  },
+  "ios_renderer_memo": {
+    "vertex_source": "libs/video/rsx_vertex_compact.c",
+    "vertex_sha256": "707983f9b1a795260444345642a818859d428e2b2af0593e0898a71dff8d331f",
+    "scope": "iPhoneOS-only exact byte-validated memo, opt-in; original decoder and texture hash retained; 128 MiB/kind including metadata"
+  },
+  "ios_progress_diagnostics": {
+    "scope": "Read-only, opt-in traced PPU queue snapshots plus successful ordinary/atomic SPU writes; no queue state, syscall or rendering behavior replacement.",
+    "profile": "BCES01229-01.00",
+    "ppu_waiters": [
+      "0x370654",
+      "0x370694",
+      "0x3706BC",
+      "0x3710E0",
+      "0x37110C",
+      "0x371138"
+    ],
+    "min_lane_check": "0x00504DF0",
+    "queue_check": "0x005054F0",
+    "snapshot_scan_limit": 64,
+    "sample_period_ns": 1000000
+  },
+  "ios_spu_dispatch": {
+    "drain_sha256": "8fe6c76896c63516911d5d23e3c46e7c0e3318cd3d3561cc50757d3060a73411",
+    "scope": "Opt-in WWS image100 existing dispatch fast path plus conservative registration-maintained reset-page negative test. Real IRQ restore, services, diagnostics and misses retain original resolver."
+  }
+}
